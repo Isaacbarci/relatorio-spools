@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Relatório Spools</title>
+  <style>
+    body{font-family:Arial;margin:16px}
+    .top{display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+    .muted{color:#666;font-size:12px}
+    input{padding:8px;min-width:240px}
+    button{padding:8px 12px;cursor:pointer}
+    table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #ddd;padding:8px}
+    th{background:#f3f3f3}
+    tfoot th{background:#fafafa}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <button id="btn">Atualizar</button>
+    <input id="filtro" placeholder="Filtrar por Serviço / Local / Material / Prog Fab...">
+    <div class="muted" id="status">Carregando...</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Serviço</th><th>Local</th><th>Material</th><th>Prog Fab</th><th>Qtd</th><th>Peso</th>
+      </tr>
+    </thead>
+    <tbody id="tb"></tbody>
+    <tfoot>
+      <tr>
+        <th colspan="4">TOTAL (filtrado)</th>
+        <th id="tq">0</th>
+        <th id="tp">0,00</th>
+      </tr>
+    </tfoot>
+  </table>
+
+<script>
+  const SHEET_ID = "1lrBnjXYNDfqKMYpKBMrcSe1cI9PAOuo0q1KxkF1sUC8";
+  const URL = `https://opensheet.elk.sh/${SHEET_ID}/DADOS`;
+
+  let cache = [];
+
+  function toNumberPtBR(v){
+    if (v == null) return 0;
+    if (typeof v === "number") return v;
+    const s = String(v).trim().replace(/\./g, "").replace(",", ".");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function fmtPeso(n){
+    return (n ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function render(lista){
+    const tb = document.getElementById("tb");
+    tb.innerHTML = "";
+
+    let totalQtd = 0;
+    let totalPeso = 0;
+
+    for(const row of lista){
+      if ((row["SERVIÇO"] || "").toUpperCase() === "TOTAL GERAL") continue;
+
+      const qtd = Number(row["QTD SPOOLS"] || 0);
+      const peso = toNumberPtBR(row["PESO TOTAL"]);
+
+      totalQtd += qtd;
+      totalPeso += peso;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${row["SERVIÇO"] || ""}</td>
+        <td>${row["LOCAL FABRICAÇÃO"] || ""}</td>
+        <td>${row["MATERIAL"] || ""}</td>
+        <td>${row["PROG FAB"] || ""}</td>
+        <td>${qtd}</td>
+        <td>${fmtPeso(peso)}</td>
+      `;
+      tb.appendChild(tr);
+    }
+
+    document.getElementById("tq").textContent = totalQtd;
+    document.getElementById("tp").textContent = fmtPeso(totalPeso);
+  }
+
+  function aplicarFiltro(){
+    const q = document.getElementById("filtro").value.trim().toUpperCase();
+    if(!q){ render(cache); return; }
+
+    const filtrado = cache.filter(r => {
+      const s = [
+        r["SERVIÇO"], r["LOCAL FABRICAÇÃO"], r["MATERIAL"], r["PROG FAB"]
+      ].join(" ").toUpperCase();
+      return s.includes(q);
+    });
+
+    render(filtrado);
+  }
+
+  async function carregar(){
+    const status = document.getElementById("status");
+    status.textContent = "Atualizando...";
+
+    const r = await fetch(URL, { cache: "no-store" });
+    if(!r.ok){
+      status.textContent = "Erro ao carregar (" + r.status + ")";
+      return;
+    }
+
+    cache = await r.json();
+    render(cache);
+
+    status.textContent = "Atualizado em: " + new Date().toLocaleString("pt-BR");
+  }
+
+  document.getElementById("btn").addEventListener("click", carregar);
+  document.getElementById("filtro").addEventListener("input", aplicarFiltro);
+
+  carregar();
+</script>
+</body>
+</html>
